@@ -16,8 +16,8 @@ import { HomeTab } from '../types';
 const TABS: HomeTab[] = ['realm', 'chatter', 'profile'];
 const MIN_POSITION = 0;
 const MAX_POSITION = TABS.length - 1;
-const AXIS_LOCK_DISTANCE = 10;
-const AXIS_LOCK_BIAS = 1.12;
+const AXIS_LOCK_DISTANCE = 8;
+const AXIS_LOCK_BIAS = 1.05;
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -37,7 +37,7 @@ export const HomeScreen: React.FC = () => {
   const activeChat = chatItems.find((chat) => chat.id === activeChatId);
   const currentIndex = Math.max(0, TABS.indexOf(activeTab));
 
-  // One continuous value controls both the horizontal canvas and the navbar.
+  // This is the single continuous navigation coordinate for both the canvas and navbar.
   const pagePosition = useMotionValue(currentIndex);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -61,9 +61,9 @@ export const HomeScreen: React.FC = () => {
     if (Math.abs(current - target) > 0.001) {
       animate(pagePosition, target, {
         type: 'spring',
-        stiffness: 420,
-        damping: 34,
-        mass: 0.8,
+        stiffness: 500,
+        damping: 38,
+        mass: 0.72,
       });
     }
   }, [activeTab, pagePosition]);
@@ -75,9 +75,9 @@ export const HomeScreen: React.FC = () => {
     setActiveTab(tab);
     animate(pagePosition, target, {
       type: 'spring',
-      stiffness: 420,
-      damping: 34,
-      mass: 0.8,
+      stiffness: 500,
+      damping: 38,
+      mass: 0.72,
     });
   };
 
@@ -94,24 +94,21 @@ export const HomeScreen: React.FC = () => {
     if (gesture.axis === 'horizontal') {
       const position = pagePosition.get();
       const velocity = gesture.velocityX;
-      let target = Math.round(position);
 
-      // A quick intentional swipe can advance one panel. A longer drag can
-      // naturally cross multiple panels because position itself is continuous.
-      if (Math.abs(velocity) > 0.45) {
-        target = velocity < 0
-          ? Math.ceil(position)
-          : Math.floor(position);
+      // Distance is the primary decision. Velocity only helps a short, intentional flick.
+      let target = Math.round(position);
+      if (Math.abs(velocity) > 0.8) {
+        target = velocity < 0 ? Math.ceil(position) : Math.floor(position);
       }
 
       target = Math.max(MIN_POSITION, Math.min(MAX_POSITION, target));
 
       animate(pagePosition, target, {
         type: 'spring',
-        stiffness: 390,
-        damping: 32,
-        mass: 0.85,
-        velocity: -velocity * 5,
+        stiffness: 500,
+        damping: 38,
+        mass: 0.72,
+        velocity: -velocity * 4,
       });
 
       const nextTab = TABS[target];
@@ -156,15 +153,14 @@ export const HomeScreen: React.FC = () => {
       gesture.lastTime = now;
     }
 
-    // Do not decide the axis until there is enough movement to avoid noisy
-    // diagonal gestures. Once chosen, the axis cannot change for this gesture.
+    // Classify once, then lock the gesture to that axis for the remainder of the drag.
     if (gesture.axis === 'undetermined' && Math.hypot(dx, dy) >= AXIS_LOCK_DISTANCE) {
-      gesture.axis = absDx > absDy * AXIS_LOCK_BIAS ? 'horizontal' : 'vertical';
-
-      if (gesture.axis === 'horizontal') {
-        // Stop the browser from treating a horizontal touch as a page gesture.
-        e.preventDefault();
+      if (absDx > absDy * AXIS_LOCK_BIAS) {
+        gesture.axis = 'horizontal';
         e.currentTarget.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      } else if (absDy > absDx * AXIS_LOCK_BIAS) {
+        gesture.axis = 'vertical';
       }
     }
 
@@ -173,25 +169,25 @@ export const HomeScreen: React.FC = () => {
     e.preventDefault();
 
     const width = viewportRef.current?.clientWidth || window.innerWidth || 360;
+    // Use the exact gesture delta from the original touch point. This makes the
+    // canvas track the finger 1:1 instead of accumulating rounded page changes.
     const rawPosition = gesture.startPosition - dx / width;
 
-    // Small elastic resistance at the two ends of the canvas.
+    // Only add resistance beyond the real ends; the middle of the canvas is completely free.
     let nextPosition = rawPosition;
     if (rawPosition < MIN_POSITION) {
-      nextPosition = MIN_POSITION + (rawPosition - MIN_POSITION) * 0.22;
+      nextPosition = MIN_POSITION + (rawPosition - MIN_POSITION) * 0.16;
     } else if (rawPosition > MAX_POSITION) {
-      nextPosition = MAX_POSITION + (rawPosition - MAX_POSITION) * 0.22;
+      nextPosition = MAX_POSITION + (rawPosition - MAX_POSITION) * 0.16;
     }
 
     pagePosition.set(nextPosition);
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => finishGesture(e);
-
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => finishGesture(e);
 
-  // A position of 0/1/2 means the left edge of Realm/Chatter/Profile is at
-  // the viewport. Because the track is exactly 300% wide, one panel is 1/3.
+  // One pagePosition unit equals one viewport width.
   const trackX = useTransform(pagePosition, (position) => `${-(position / 3) * 100}%`);
 
   if (activeChat) {
@@ -213,7 +209,7 @@ export const HomeScreen: React.FC = () => {
       <div
         ref={viewportRef}
         className="relative min-h-0 flex-1 overflow-hidden"
-        style={{ touchAction: 'pan-y' }}
+        style={{ touchAction: 'pan-y pinch-zoom' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
