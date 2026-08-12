@@ -10,119 +10,104 @@ interface BottomNavProps {
   onSelectTab: (tab: HomeTab) => void;
 }
 
+const NAV_ITEMS: HomeTab[] = ['realm', 'chatter', 'profile'];
+
 export const BottomNav: React.FC<BottomNavProps> = ({
   pagePosition,
   activeTab,
   onSelectTab,
 }) => {
-  // Continuous horizontal offset for the active capsule bubble (0% to 200%)
+  // pagePosition is the only source of truth. The bubble follows the same
+  // continuous value as the three-panel viewport, so there is no second
+  // navigation animation to drift out of sync.
   const bubbleX = useTransform(pagePosition, (pos) => `${pos * 100}%`);
-
-  // Transform scale slightly when overscrolling
-  const bubbleScale = useTransform(pagePosition, (pos) => {
-    if (pos < 0) return 1 + pos * 0.15;
-    if (pos > 2) return 1 - (pos - 2) * 0.15;
-    return 1;
+  const bubbleScaleX = useTransform(pagePosition, (pos) => {
+    const distanceFromNearest = Math.abs(pos - Math.round(pos));
+    return 1 + Math.min(distanceFromNearest, 0.5) * 0.18;
+  });
+  const bubbleScaleY = useTransform(pagePosition, (pos) => {
+    const distanceFromNearest = Math.abs(pos - Math.round(pos));
+    return 1 - Math.min(distanceFromNearest, 0.5) * 0.08;
+  });
+  const glowOpacity = useTransform(pagePosition, (pos) => {
+    const distanceFromNearest = Math.abs(pos - Math.round(pos));
+    return 0.58 - Math.min(distanceFromNearest, 0.5) * 0.35;
   });
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md px-6 pb-6 pt-2 select-none">
-      <div className="relative flex items-center justify-between rounded-full border border-zinc-800/90 bg-black p-1.5 shadow-[0_12px_36px_rgba(0,0,0,0.9)] backdrop-blur-xl">
-        {/* Organic Light-Blue Active Capsule Bubble */}
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-md px-5 pb-5 pt-2 select-none"
+      aria-label="Primary navigation"
+    >
+      <div className="relative overflow-hidden rounded-[28px] border border-zinc-800/90 bg-black/95 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <motion.div
-          className="absolute top-1.5 bottom-1.5 w-1/3 rounded-full border border-cyan-400/40 bg-cyan-500/15 shadow-[0_0_22px_rgba(0,210,255,0.38)] backdrop-blur-md pointer-events-none"
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-1.5 top-1.5 left-1.5 w-[calc(33.333333%-4px)] rounded-[22px] border border-[#00d2ff]/70 bg-[#00d2ff]/12"
           style={{
             x: bubbleX,
-            scale: bubbleScale,
+            scaleX: bubbleScaleX,
+            scaleY: bubbleScaleY,
+            transformOrigin: 'center',
           }}
         >
-          {/* Light-Blue Active Accent Dot */}
-          <div className="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-3.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#00d2ff]" />
+          <motion.div
+            className="absolute inset-0 rounded-[22px] bg-[#00d2ff] blur-xl"
+            style={{ opacity: glowOpacity }}
+          />
+          <div className="absolute inset-x-4 bottom-1 h-1 rounded-full bg-[#00d2ff] shadow-[0_0_12px_#00d2ff]" />
         </motion.div>
 
-        {/* 1. REALM TAB (Position 0) */}
-        <button
-          onClick={() => onSelectTab('realm')}
-          className="relative z-10 flex flex-1 items-center justify-center py-2.5 transition active:scale-95"
-          aria-label="Realm"
-        >
-          <GlobeIconWithProximity pagePosition={pagePosition} tabIndex={0} active={activeTab === 'realm'} />
-        </button>
+        <div className="relative z-10 flex items-center">
+          <NavButton
+            label="Realm"
+            active={activeTab === 'realm'}
+            onClick={() => onSelectTab('realm')}
+          >
+            <Globe className="h-6 w-6" strokeWidth={2.2} />
+          </NavButton>
 
-        {/* 2. CHATTER TAB (Position 1) */}
-        <button
-          onClick={() => onSelectTab('chatter')}
-          className="relative z-10 flex flex-1 items-center justify-center py-2.5 transition active:scale-95"
-          aria-label="Chatter"
-        >
-          <ChatterIconWithProximity pagePosition={pagePosition} tabIndex={1} active={activeTab === 'chatter'} />
-        </button>
+          <NavButton
+            label="Chatter"
+            active={activeTab === 'chatter'}
+            onClick={() => onSelectTab('chatter')}
+          >
+            <MessageSquare className="h-6 w-6" strokeWidth={2.2} />
+          </NavButton>
 
-        {/* 3. PROFILE BOB TAB (Position 2) */}
-        <button
-          onClick={() => onSelectTab('profile')}
-          className="relative z-10 flex flex-1 items-center justify-center py-2.5 transition active:scale-95"
-          aria-label="Profile Bob"
-        >
-          <ProfileIconWithProximity pagePosition={pagePosition} tabIndex={2} active={activeTab === 'profile'} />
-        </button>
+          <NavButton
+            label="Profile Bob"
+            active={activeTab === 'profile'}
+            onClick={() => onSelectTab('profile')}
+          >
+            <PacmanAvatar size={26} isIconOnly active={activeTab === 'profile'} />
+          </NavButton>
+        </div>
       </div>
     </nav>
   );
 };
 
-// Helper subcomponents for continuous proximity color highlights
-const GlobeIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
+const NavButton: React.FC<{
+  label: string;
   active: boolean;
-}> = ({ pagePosition, tabIndex, active }) => {
-  const scale = useTransform(pagePosition, (pos) => {
-    const proximity = 1 - Math.min(1, Math.abs(pos - tabIndex));
-    return 1 + proximity * 0.12;
-  });
-
-  const colorClass = active ? 'text-cyan-300 drop-shadow-[0_0_10px_rgba(0,210,255,0.8)]' : 'text-zinc-500 hover:text-zinc-300';
-
-  return (
-    <motion.div style={{ scale }}>
-      <Globe className={`h-6 w-6 transition-colors duration-150 ${colorClass}`} />
-    </motion.div>
-  );
-};
-
-const ChatterIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
-  active: boolean;
-}> = ({ pagePosition, tabIndex, active }) => {
-  const scale = useTransform(pagePosition, (pos) => {
-    const proximity = 1 - Math.min(1, Math.abs(pos - tabIndex));
-    return 1 + proximity * 0.12;
-  });
-
-  const colorClass = active ? 'text-cyan-300 drop-shadow-[0_0_10px_rgba(0,210,255,0.8)]' : 'text-zinc-500 hover:text-zinc-300';
-
-  return (
-    <motion.div style={{ scale }}>
-      <MessageSquare className={`h-6 w-6 transition-colors duration-150 ${colorClass}`} />
-    </motion.div>
-  );
-};
-
-const ProfileIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
-  active: boolean;
-}> = ({ pagePosition, tabIndex, active }) => {
-  const scale = useTransform(pagePosition, (pos) => {
-    const proximity = 1 - Math.min(1, Math.abs(pos - tabIndex));
-    return 1 + proximity * 0.12;
-  });
-
-  return (
-    <motion.div style={{ scale }}>
-      <PacmanAvatar size={26} isIconOnly={true} active={active} />
-    </motion.div>
-  );
-};
+  onClick: () => void;
+  children: React.ReactNode;
+}> = ({ label, active, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={label}
+    aria-current={active ? 'page' : undefined}
+    className="relative flex min-w-0 flex-1 items-center justify-center rounded-[22px] py-3 text-white outline-none transition-transform duration-150 active:scale-95 focus-visible:ring-2 focus-visible:ring-[#00d2ff]"
+  >
+    <span
+      className={`relative flex items-center justify-center transition-[color,filter,transform] duration-150 ${
+        active
+          ? 'scale-110 text-white drop-shadow-[0_0_10px_rgba(0,210,255,0.65)]'
+          : 'text-zinc-500 hover:text-zinc-300'
+      }`}
+    >
+      {children}
+    </span>
+  </button>
+);
