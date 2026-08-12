@@ -21,9 +21,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
 }) => {
-  // pagePosition is the single continuous coordinate shared with the content.
-  // The indicator moves one third of the navbar for every page-position unit.
+  // pagePosition is the exact same continuous coordinate that moves the content.
+  // The indicator therefore never waits for activeTab to change.
   const indicatorX = useTransform(pagePosition, (pos) => `${pos * (100 / NAV_ITEMS.length)}%`);
+
+  // The indicator becomes wider while crossing from one item to the next, then
+  // contracts again. This creates a liquid/stretching impression instead of a
+  // dot teleporting between three fixed states.
+  const fractional = useTransform(pagePosition, (pos) => {
+    const clamped = Math.max(0, Math.min(2, pos));
+    return clamped - Math.floor(clamped);
+  });
+  const distanceFromCenter = useTransform(fractional, (p) => Math.abs(p - 0.5) * 2);
+  const liquidScaleX = useTransform(distanceFromCenter, [0, 1], [2.05, 1]);
+  const liquidOpacity = useTransform(distanceFromCenter, [0, 1], [0.96, 1]);
 
   return (
     <nav
@@ -51,22 +62,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           ))}
         </div>
 
-        {/* Full-width coordinate layer: x=0/33.33/66.66% now matches the
-            three navigation slots exactly. This fixes the previous mismatch
-            where the dot travelled the entire navbar width for one page. */}
+        {/* Liquid indicator: its center follows pagePosition continuously and its
+            body stretches toward the next navigation slot while crossing it. */}
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-x-1.5 bottom-1.5 h-2"
-          style={{ x: indicatorX }}
         >
-          <div className="flex h-full w-1/3 items-center justify-center">
-            <motion.div
-              className="h-1.5 w-1.5 rounded-full bg-[#00d2ff]"
-              style={{
-                boxShadow: '0 0 7px #00d2ff, 0 0 14px rgba(0,210,255,0.7)',
-              }}
-            />
-          </div>
+          <motion.div
+            className="absolute left-0 top-1/2 h-1.5 w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#00d2ff]"
+            style={{
+              left: indicatorX,
+              scaleX: liquidScaleX,
+              opacity: liquidOpacity,
+              transformOrigin: 'center',
+              boxShadow: '0 0 7px #00d2ff, 0 0 14px rgba(0,210,255,0.7)',
+            }}
+          />
         </motion.div>
       </div>
     </nav>
@@ -82,7 +93,6 @@ const NavButton: React.FC<{
   onClick: () => void;
   children: React.ReactNode;
 }> = ({ label, tab, index, pagePosition, active, onClick, children }) => {
-  // Continuous distance from this icon to the current finger/page position.
   const distance = useTransform(pagePosition, (pos) => Math.abs(pos - index));
   const scale = useTransform(distance, [0, 0.5, 1], [1.12, 1.04, 1]);
   const opacity = useTransform(distance, [0, 0.75, 1], [1, 0.82, 0.55]);
