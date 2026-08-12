@@ -21,10 +21,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   onSelectTab,
 }) => {
-  // IMPORTANT: pagePosition is read directly while the finger is moving.
-  // Nothing here waits for activeTab to change, so the indicator and icon
-  // emphasis react continuously during the drag itself.
-  const dotX = useTransform(pagePosition, (pos) => `${pos * 100}%`);
+  // pagePosition is the single continuous coordinate shared with the content.
+  // The indicator moves one third of the navbar for every page-position unit.
+  const indicatorX = useTransform(pagePosition, (pos) => `${pos * (100 / NAV_ITEMS.length)}%`);
 
   return (
     <nav
@@ -52,19 +51,22 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           ))}
         </div>
 
-        {/* The indicator is a DOT, not a capsule. Its x position is the exact
-            same continuous navigation coordinate used by the content canvas. */}
+        {/* Full-width coordinate layer: x=0/33.33/66.66% now matches the
+            three navigation slots exactly. This fixes the previous mismatch
+            where the dot travelled the entire navbar width for one page. */}
         <motion.div
           aria-hidden="true"
-          className="pointer-events-none absolute bottom-1.5 left-1.5 flex h-2 w-[calc(33.333333%-4px)] items-center justify-center"
-          style={{ x: dotX }}
+          className="pointer-events-none absolute inset-x-1.5 bottom-1.5 h-2"
+          style={{ x: indicatorX }}
         >
-          <motion.div
-            className="h-1.5 w-1.5 rounded-full bg-[#00d2ff]"
-            style={{
-              boxShadow: '0 0 7px #00d2ff, 0 0 14px rgba(0,210,255,0.7)',
-            }}
-          />
+          <div className="flex h-full w-1/3 items-center justify-center">
+            <motion.div
+              className="h-1.5 w-1.5 rounded-full bg-[#00d2ff]"
+              style={{
+                boxShadow: '0 0 7px #00d2ff, 0 0 14px rgba(0,210,255,0.7)',
+              }}
+            />
+          </div>
         </motion.div>
       </div>
     </nav>
@@ -81,7 +83,6 @@ const NavButton: React.FC<{
   children: React.ReactNode;
 }> = ({ label, tab, index, pagePosition, active, onClick, children }) => {
   // Continuous distance from this icon to the current finger/page position.
-  // This makes the navbar visibly react before the gesture is released.
   const distance = useTransform(pagePosition, (pos) => Math.abs(pos - index));
   const scale = useTransform(distance, [0, 0.5, 1], [1.12, 1.04, 1]);
   const opacity = useTransform(distance, [0, 0.75, 1], [1, 0.82, 0.55]);
