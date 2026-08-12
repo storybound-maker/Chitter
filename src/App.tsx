@@ -1,0 +1,38 @@
+import React from 'react';
+import { ChitterProvider, useChitter } from './context/ChitterContext';
+import { MobileDeviceFrame } from './components/mobile/MobileDeviceFrame';
+import { SplashScreen } from './screens/SplashScreen';
+import { WelcomeScreen } from './screens/WelcomeScreen';
+import { LoginScreen } from './screens/LoginScreen';
+import { SignUpScreen } from './screens/SignUpScreen';
+import { HomeScreen } from './screens/HomeScreen';
+
+const MainNavigator: React.FC = () => {
+  const { currentScreen } = useChitter();
+
+  switch (currentScreen) {
+    case 'splash':
+      return <SplashScreen />;
+    case 'welcome':
+      return <WelcomeScreen />;
+    case 'login':
+      return <LoginScreen />;
+    case 'signup':
+      return <SignUpScreen />;
+    case 'home':
+      return <HomeScreen />;
+    default:
+      return <HomeScreen />;
+  }
+};
+
+export default function App() {
+  return (
+    <ChitterProvider>
+      <MobileDeviceFrame>
+        <MainNavigator />
+      </MobileDeviceFrame>
+    </ChitterProvider>
+  );
+}
+
