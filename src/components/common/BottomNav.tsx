@@ -10,53 +10,21 @@ interface BottomNavProps {
   onSelectTab: (tab: HomeTab) => void;
 }
 
-const NAV_ITEMS: HomeTab[] = ['realm', 'chatter', 'profile'];
-
 export const BottomNav: React.FC<BottomNavProps> = ({
   pagePosition,
   activeTab,
   onSelectTab,
 }) => {
-  // pagePosition is the only source of truth. The bubble follows the same
-  // continuous value as the three-panel viewport, so there is no second
-  // navigation animation to drift out of sync.
-  const bubbleX = useTransform(pagePosition, (pos) => `${pos * 100}%`);
-  const bubbleScaleX = useTransform(pagePosition, (pos) => {
-    const distanceFromNearest = Math.abs(pos - Math.round(pos));
-    return 1 + Math.min(distanceFromNearest, 0.5) * 0.18;
-  });
-  const bubbleScaleY = useTransform(pagePosition, (pos) => {
-    const distanceFromNearest = Math.abs(pos - Math.round(pos));
-    return 1 - Math.min(distanceFromNearest, 0.5) * 0.08;
-  });
-  const glowOpacity = useTransform(pagePosition, (pos) => {
-    const distanceFromNearest = Math.abs(pos - Math.round(pos));
-    return 0.58 - Math.min(distanceFromNearest, 0.5) * 0.35;
-  });
+  // Keep the indicator driven by the same continuous page position as the canvas.
+  // The dot travels between the three tab centers instead of using a capsule.
+  const dotX = useTransform(pagePosition, (pos) => `${pos * 100}%`);
 
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 mx-auto w-full max-w-md px-5 pb-5 pt-2 select-none"
       aria-label="Primary navigation"
     >
-      <div className="relative overflow-hidden rounded-[28px] border border-zinc-800/90 bg-black/95 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl">
-        <motion.div
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-1.5 top-1.5 left-1.5 w-[calc(33.333333%-4px)] rounded-[22px] border border-[#00d2ff]/70 bg-[#00d2ff]/12"
-          style={{
-            x: bubbleX,
-            scaleX: bubbleScaleX,
-            scaleY: bubbleScaleY,
-            transformOrigin: 'center',
-          }}
-        >
-          <motion.div
-            className="absolute inset-0 rounded-[22px] bg-[#00d2ff] blur-xl"
-            style={{ opacity: glowOpacity }}
-          />
-          <div className="absolute inset-x-4 bottom-1 h-1 rounded-full bg-[#00d2ff] shadow-[0_0_12px_#00d2ff]" />
-        </motion.div>
-
+      <div className="relative rounded-[28px] border border-zinc-800/90 bg-black/95 p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.85)] backdrop-blur-xl">
         <div className="relative z-10 flex items-center">
           <NavButton
             label="Realm"
@@ -82,6 +50,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <PacmanAvatar size={26} isIconOnly active={activeTab === 'profile'} />
           </NavButton>
         </div>
+
+        {/* Simple light-blue dot. Its center follows pagePosition continuously. */}
+        <motion.div
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-1.5 left-1.5 flex h-2 w-[calc(33.333333%-4px)] items-center justify-center"
+          style={{ x: dotX }}
+        >
+          <div className="h-1.5 w-1.5 rounded-full bg-[#00d2ff] shadow-[0_0_8px_#00d2ff,0_0_14px_rgba(0,210,255,0.65)]" />
+        </motion.div>
       </div>
     </nav>
   );
