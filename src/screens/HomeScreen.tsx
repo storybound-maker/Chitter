@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { animate, motion, useMotionValue, useTransform } from 'motion/react';
+import React, { useRef, useState, useEffect } from 'react';
+import { motion, useMotionValue, useTransform, animate } from 'motion/react';
 import { useChitter } from '../context/ChitterContext';
 import { Header } from '../components/common/Header';
 import { BottomNav } from '../components/common/BottomNav';
@@ -12,12 +12,6 @@ import { EditProfileModal } from '../components/modals/EditProfileModal';
 import { NewChitModal } from '../components/modals/NewChitModal';
 import { SettingsDrawer } from '../components/modals/SettingsDrawer';
 import { HomeTab } from '../types';
-
-const TABS: HomeTab[] = ['realm', 'chatter', 'profile'];
-const MIN_POSITION = 0;
-const MAX_POSITION = TABS.length - 1;
-const AXIS_LOCK_DISTANCE = 8;
-const AXIS_LOCK_BIAS = 1.05;
 
 export const HomeScreen: React.FC = () => {
   const {
@@ -34,161 +28,190 @@ export const HomeScreen: React.FC = () => {
   } = useChitter();
 
   const [isSettingsOpen, setSettingsOpen] = useState(false);
-  const activeChat = chatItems.find((chat) => chat.id === activeChatId);
-  const currentIndex = Math.max(0, TABS.indexOf(activeTab));
 
-  // This is the single continuous navigation coordinate for both the canvas and navbar.
+  // Active Chat thread view takes over screen when selected
+  const activeChat = chatItems.find((c) => c.id === activeChatId);
+
+  // Tab mapping: realm = 0, chatter = 1, profile = 2
+  const tabs: HomeTab[] = ['realm', 'chatter', 'profile'];
+  const currentIndex = tabs.indexOf(activeTab);
+
+  // Master single source of truth for horizontal navigation (0.0 to 2.0 continuous float)
   const pagePosition = useMotionValue(currentIndex);
-  const viewportRef = useRef<HTMLDivElement>(null);
 
-  const gestureRef = useRef({
-    pointerId: -1,
+  // Viewport container ref
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Track pointer state for axis-locking & velocity
+  const gestureRef = useRef<{
+    startX: number;
+    startY: number;
+    startPos: number;
+    axis: 'undetermined' | 'horizontal' | 'vertical';
+    lastX: number;
+    lastTime: number;
+    velocity: number;
+    isPointerDown: boolean;
+  }>({
     startX: 0,
     startY: 0,
-    startPosition: currentIndex,
-    axis: 'undetermined' as 'undetermined' | 'horizontal' | 'vertical',
+    startPos: currentIndex,
+    axis: 'undetermined',
     lastX: 0,
     lastTime: 0,
-    velocityX: 0,
-    active: false,
+    velocity: 0,
+    isPointerDown: false,
   });
 
+  // Keep pagePosition in sync when activeTab changes externally
   useEffect(() => {
-    const target = TABS.indexOf(activeTab);
-    if (target < 0 || gestureRef.current.active) return;
-
+    const target = tabs.indexOf(activeTab);
     const current = pagePosition.get();
-    if (Math.abs(current - target) > 0.001) {
+    if (Math.abs(current - target) > 0.01 && !gestureRef.current.isPointerDown) {
       animate(pagePosition, target, {
         type: 'spring',
-        stiffness: 500,
-        damping: 38,
-        mass: 0.72,
+        stiffness: 320,
+        damping: 30,
       });
     }
-  }, [activeTab, pagePosition]);
+  }, [activeTab]);
 
-  const selectTab = (tab: HomeTab) => {
-    const target = TABS.indexOf(tab);
-    if (target < 0) return;
-
+  // Handle Tab Selection from BottomNav
+  const handleSelectTab = (tab: HomeTab) => {
+    const targetIdx = tabs.indexOf(tab);
     setActiveTab(tab);
-    animate(pagePosition, target, {
+    animate(pagePosition, targetIdx, {
       type: 'spring',
-      stiffness: 500,
-      damping: 38,
-      mass: 0.72,
+      stiffness: 350,
+      damping: 30,
     });
   };
 
-  const finishGesture = (e?: React.PointerEvent<HTMLDivElement>) => {
-    const gesture = gestureRef.current;
-    if (!gesture.active) return;
+  // Pointer / Touch Handlers for Axis Locking & Continuous Dragging
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
 
-    if (e && e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPos = pagePosition.get();
 
-    gesture.active = false;
-
-    if (gesture.axis === 'horizontal') {
-      const position = pagePosition.get();
-      const velocity = gesture.velocityX;
-
-      // Distance is the primary decision. Velocity only helps a short, intentional flick.
-      let target = Math.round(position);
-      if (Math.abs(velocity) > 0.8) {
-        target = velocity < 0 ? Math.ceil(position) : Math.floor(position);
-      }
-
-      target = Math.max(MIN_POSITION, Math.min(MAX_POSITION, target));
-
-      animate(pagePosition, target, {
-        type: 'spring',
-        stiffness: 500,
-        damping: 38,
-        mass: 0.72,
-        velocity: -velocity * 4,
-      });
-
-      const nextTab = TABS[target];
-      if (nextTab !== activeTab) setActiveTab(nextTab);
-    }
-
-    gestureRef.current.axis = 'undetermined';
-    gestureRef.current.pointerId = -1;
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-
-    const current = pagePosition.get();
     gestureRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      startPosition: current,
+      startX,
+      startY,
+      startPos,
       axis: 'undetermined',
-      lastX: e.clientX,
+      lastX: startX,
       lastTime: performance.now(),
-      velocityX: 0,
-      active: true,
+      velocity: 0,
+      isPointerDown: true,
     };
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent) => {
     const gesture = gestureRef.current;
-    if (!gesture.active || gesture.pointerId !== e.pointerId) return;
+    if (!gesture.isPointerDown) return;
 
-    const dx = e.clientX - gesture.startX;
-    const dy = e.clientY - gesture.startY;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
+    const currentX = e.clientX;
+    const currentY = e.clientY;
+
+    const dx = currentX - gesture.startX;
+    const dy = currentY - gesture.startY;
 
     const now = performance.now();
     const dt = now - gesture.lastTime;
     if (dt > 0) {
-      gesture.velocityX = (e.clientX - gesture.lastX) / dt;
-      gesture.lastX = e.clientX;
+      gesture.velocity = (currentX - gesture.lastX) / dt; // px / ms
+      gesture.lastX = currentX;
       gesture.lastTime = now;
     }
 
-    // Classify once, then lock the gesture to that axis for the remainder of the drag.
-    if (gesture.axis === 'undetermined' && Math.hypot(dx, dy) >= AXIS_LOCK_DISTANCE) {
-      if (absDx > absDy * AXIS_LOCK_BIAS) {
-        gesture.axis = 'horizontal';
-        e.currentTarget.setPointerCapture(e.pointerId);
-        e.preventDefault();
-      } else if (absDy > absDx * AXIS_LOCK_BIAS) {
-        gesture.axis = 'vertical';
+    // 1. Direction Locking: Determine whether gesture is Horizontal or Vertical
+    if (gesture.axis === 'undetermined') {
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
+      if (Math.hypot(dx, dy) >= 6) {
+        if (absDx > absDy * 1.1) {
+          gesture.axis = 'horizontal';
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        } else {
+          gesture.axis = 'vertical';
+        }
       }
     }
 
-    if (gesture.axis !== 'horizontal') return;
+    // 2. If locked to horizontal, update pagePosition continuously across all 3 panels
+    if (gesture.axis === 'horizontal') {
+      const width = containerRef.current?.clientWidth || window.innerWidth || 360;
+      const deltaPage = -dx / width;
+      let targetPos = gesture.startPos + deltaPage;
 
-    e.preventDefault();
+      // Elastic rubber band effect on overscroll (<0 or >2)
+      if (targetPos < 0) {
+        targetPos = targetPos * 0.25;
+      } else if (targetPos > 2) {
+        targetPos = 2 + (targetPos - 2) * 0.25;
+      }
 
-    const width = viewportRef.current?.clientWidth || window.innerWidth || 360;
-    // Use the exact gesture delta from the original touch point. This makes the
-    // canvas track the finger 1:1 instead of accumulating rounded page changes.
-    const rawPosition = gesture.startPosition - dx / width;
-
-    // Only add resistance beyond the real ends; the middle of the canvas is completely free.
-    let nextPosition = rawPosition;
-    if (rawPosition < MIN_POSITION) {
-      nextPosition = MIN_POSITION + (rawPosition - MIN_POSITION) * 0.16;
-    } else if (rawPosition > MAX_POSITION) {
-      nextPosition = MAX_POSITION + (rawPosition - MAX_POSITION) * 0.16;
+      pagePosition.set(targetPos);
     }
 
-    pagePosition.set(nextPosition);
+    // 3. If locked to vertical, DO NOTHING to pagePosition.
+    // Native browser scrolling inside child panel div handles vertical scrolling.
   };
 
-  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => finishGesture(e);
-  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => finishGesture(e);
+  const handlePointerUp = (e?: React.PointerEvent) => {
+    const gesture = gestureRef.current;
+    if (!gesture.isPointerDown) return;
+    gesture.isPointerDown = false;
 
-  // One pagePosition unit equals one viewport width.
-  const trackX = useTransform(pagePosition, (position) => `${-(position / 3) * 100}%`);
+    if (e && e.currentTarget && gesture.axis === 'horizontal') {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
+
+    if (gesture.axis === 'horizontal') {
+      const currentPos = pagePosition.get();
+      const vel = gesture.velocity; // px/ms
+
+      let targetIndex = Math.round(currentPos);
+
+      // Fast swipe gesture detection
+      if (vel < -0.35) {
+        // Fast swipe left -> advance right
+        targetIndex = Math.min(2, Math.floor(gesture.startPos) + 1);
+        if (currentPos > 1.2) targetIndex = 2;
+      } else if (vel > 0.35) {
+        // Fast swipe right -> advance left
+        targetIndex = Math.max(0, Math.ceil(gesture.startPos) - 1);
+        if (currentPos < 0.8) targetIndex = 0;
+      } else {
+        // Slow drag -> snap to nearest section
+        targetIndex = Math.min(2, Math.max(0, Math.round(currentPos)));
+      }
+
+      // Spring physics to settle into target position
+      animate(pagePosition, targetIndex, {
+        type: 'spring',
+        stiffness: 340,
+        damping: 30,
+        velocity: -vel * 3,
+      });
+
+      const nextTab = tabs[targetIndex];
+      if (nextTab !== activeTab) {
+        setActiveTab(nextTab);
+      }
+    }
+
+    gesture.axis = 'undetermined';
+  };
+
+  // Convert pagePosition float to container translateX percentage (-0% to -200% of single panel width)
+  // Since 3 panels wrapper has width = 300%, -pagePosition * (100% / 3) = -pagePosition * 33.333%
+  const containerX = useTransform(pagePosition, (pos) => `-${(pos / 3) * 100}%`);
 
   if (activeChat) {
     return (
@@ -199,39 +222,41 @@ export const HomeScreen: React.FC = () => {
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-zinc-950 text-white select-none">
+    <div className="relative flex h-full w-full flex-col bg-zinc-950 text-white overflow-hidden select-none">
+      {/* Header Bar */}
       <Header
         onOpenSearch={() => setSearchOpen(true)}
         onOpenNewChit={() => setNewChitModalOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
+      {/* Main Continuous Panel Viewport Container */}
       <div
-        ref={viewportRef}
-        className="relative min-h-0 flex-1 overflow-hidden"
-        style={{ touchAction: 'pan-y pinch-zoom' }}
+        ref={containerRef}
+        className="relative flex-1 overflow-hidden"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
+        onPointerCancel={handlePointerUp}
       >
+        {/* 300% Width Horizontal Track Container */}
         <motion.div
           className="flex h-full w-[300%] will-change-transform"
-          style={{ x: trackX }}
+          style={{ x: containerX }}
         >
-          <section
-            aria-label="Realm"
-            className="h-full w-1/3 overflow-y-auto overscroll-contain px-4 pb-28 pt-3 space-y-4"
+          {/* PANEL 0: REALM */}
+          <div
+            className="h-full w-1/3 overflow-y-auto px-4 pt-3 pb-28 space-y-4"
             style={{ touchAction: 'pan-y' }}
           >
             {realmPosts.map((post) => (
               <RealmPostCard key={post.id} post={post} />
             ))}
-          </section>
+          </div>
 
-          <section
-            aria-label="Chatter"
-            className="h-full w-1/3 overflow-y-auto overscroll-contain pb-28"
+          {/* PANEL 1: CHATTER */}
+          <div
+            className="h-full w-1/3 overflow-y-auto pb-28"
             style={{ touchAction: 'pan-y' }}
           >
             <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
@@ -244,34 +269,33 @@ export const HomeScreen: React.FC = () => {
                 onClick={() => openChat(chat.id)}
               />
             ))}
-          </section>
+          </div>
 
-          <section
-            aria-label="Profile Bob"
-            className="h-full w-1/3 overflow-y-auto overscroll-contain pb-28 pt-2"
+          {/* PANEL 2: PROFILE BOB */}
+          <div
+            className="h-full w-1/3 overflow-y-auto pt-2 pb-28"
             style={{ touchAction: 'pan-y' }}
           >
             <ProfileBobView
               onOpenEditProfile={() => setEditProfileModalOpen(true)}
               onOpenSettings={() => setSettingsOpen(true)}
             />
-          </section>
+          </div>
         </motion.div>
       </div>
 
+      {/* Fluid Gesture Bottom Navigation Bar */}
       <BottomNav
         pagePosition={pagePosition}
         activeTab={activeTab}
-        onSelectTab={selectTab}
+        onSelectTab={handleSelectTab}
       />
 
+      {/* Modals & Drawers */}
       <SearchModal />
       <EditProfileModal />
       <NewChitModal />
-      <SettingsDrawer
-        isOpen={isSettingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
+      <SettingsDrawer isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 };

@@ -15,43 +15,42 @@ export const LoginScreen: React.FC = () => {
       setError('Please fill in all fields');
       return;
     }
-
     setError(null);
     setLoading(true);
-
     try {
       await login(email, password);
-    } catch {
-      // Keep provider/Firebase implementation details out of the user-facing UI.
-      setError('We couldn’t sign you in. Check your email and password and try again.');
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex h-full w-full flex-col justify-between bg-zinc-950 p-6 text-white">
+    <div className="flex h-full w-full flex-col bg-zinc-950 p-6 text-white justify-between">
       <div>
+        {/* Top Navigation */}
         <button
           onClick={() => setScreen('welcome')}
-          className="mb-8 flex items-center space-x-2 pt-2 text-sm font-semibold text-zinc-400 hover:text-white"
+          className="flex items-center space-x-2 text-sm font-semibold text-zinc-400 hover:text-white pt-2 mb-8"
         >
           <ArrowLeft className="h-5 w-5" />
           <span>Back</span>
         </button>
 
         <h1 className="text-3xl font-black text-white">Welcome Back</h1>
-        <p className="mt-1 text-xs text-zinc-400">Sign in to access your Chatter & Realm.</p>
+        <p className="text-xs text-zinc-400 mt-1">Sign in to access your Chatter & Realm.</p>
 
         {error && (
-          <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs font-semibold text-rose-400">
+          <div className="mt-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 p-3 text-xs text-rose-400 font-semibold">
             {error}
           </div>
         )}
 
+        {/* Login Form */}
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Email Address</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Email Address</label>
             <div className="relative">
               <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
               <input
@@ -65,7 +64,7 @@ export const LoginScreen: React.FC = () => {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-zinc-400">Password</label>
+            <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Password</label>
             <div className="relative">
               <Lock className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
               <input
@@ -81,7 +80,7 @@ export const LoginScreen: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="mt-6 flex w-full items-center justify-center space-x-2 rounded-2xl bg-cyan-400 py-3.5 text-center text-sm font-bold text-black shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300 active:scale-[0.98] disabled:opacity-50"
+            className="flex w-full items-center justify-center space-x-2 rounded-2xl bg-cyan-400 py-3.5 text-center text-sm font-bold text-black shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-300 active:scale-[0.98] disabled:opacity-50 mt-6"
           >
             {loading ? (
               <span>Signing in...</span>
