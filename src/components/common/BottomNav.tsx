@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   motion,
   MotionValue,
@@ -8,7 +8,7 @@ import {
   animate,
   useMotionValue,
 } from 'motion/react';
-import { Globe, MessageSquare } from 'lucide-react';
+import { Globe, MessageSquare, Plus, Camera, RefreshCw, X } from 'lucide-react';
 import { HomeTab } from '../../types';
 import { PacmanAvatar } from './PacmanAvatar';
 
@@ -16,14 +16,23 @@ interface BottomNavProps {
   pagePosition: MotionValue<number>;
   activeTab: HomeTab;
   onSelectTab: (tab: HomeTab) => void;
+  onOpenNewChit?: () => void;
+  onOpenCamera?: () => void;
+  onRefreshPage?: () => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   pagePosition,
   onSelectTab,
+  onOpenNewChit,
+  onOpenCamera,
+  onRefreshPage,
 }) => {
   const tabs: HomeTab[] = ['realm', 'chatter', 'profile'];
   const navContainerRef = useRef<HTMLDivElement>(null);
+  const realmLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const realmLongPressTriggered = useRef(false);
+  const [showRealmQuickActions, setShowRealmQuickActions] = useState(false);
 
   // Physical motion values for elastic deformation of the rounded navbar container
   const navContainerX = useMotionValue(0);
@@ -31,43 +40,35 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const navContainerScaleY = useMotionValue(1);
   const navContainerSkewX = useMotionValue(0);
 
-  // Smooth springs for elastic return to standard shape
   const springNavX = useSpring(navContainerX, { stiffness: 320, damping: 25 });
   const springNavScaleX = useSpring(navContainerScaleX, { stiffness: 320, damping: 25 });
   const springNavScaleY = useSpring(navContainerScaleY, { stiffness: 320, damping: 25 });
   const springNavSkewX = useSpring(navContainerSkewX, { stiffness: 320, damping: 25 });
 
-  // Velocity derived from continuous pagePosition for liquid dot stretch
   const rawVelocity = useVelocity(pagePosition);
   const velocity = useSpring(rawVelocity, { stiffness: 280, damping: 22 });
 
-  // 1. Continuous Horizontal Position for the Light-Blue Dot across 3 slot centers:
-  // Slot positions: Realm = 16.666%, Chatter = 50.000%, Profile = 83.333%
   const dotLeftPercent = useTransform(
     pagePosition,
     (pos: number) => `${16.666 + (pos / 2) * 66.667}%`
   );
 
-  // 2. Liquid Dot Stretch Effect along X-axis
   const dotScaleX = useTransform(velocity, (v) => {
     const speed = Math.abs(v);
     return 1 + Math.min(speed * 0.35, 1.5);
   });
 
-  // 3. Subtle Liquid Squash along Y-axis
   const dotScaleY = useTransform(velocity, (v) => {
     const speed = Math.abs(v);
     return 1 - Math.min(speed * 0.12, 0.28);
   });
 
-  // 4. Directional transform origin for dot stretch
   const dotTransformOrigin = useTransform(velocity, (v) => {
     if (v > 0.05) return '0% 50%';
     if (v < -0.05) return '100% 50%';
     return '50% 50%';
   });
 
-  // Pointer drag state for physical navbar controller
   const dragRef = useRef<{
     isDragging: boolean;
     hasMoved: boolean;
@@ -85,6 +86,34 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     lastTime: 0,
     velocity: 0,
   });
+
+  const clearRealmLongPress = () => {
+    if (realmLongPressTimer.current) {
+      clearTimeout(realmLongPressTimer.current);
+      realmLongPressTimer.current = null;
+    }
+  };
+
+  const handleRealmLongPressStart = (e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    realmLongPressTriggered.current = false;
+    clearRealmLongPress();
+    realmLongPressTimer.current = setTimeout(() => {
+      realmLongPressTriggered.current = true;
+      setShowRealmQuickActions(true);
+      try {
+        if (navigator.vibrate) navigator.vibrate(40);
+      } catch (_) {}
+    }, 500);
+  };
+
+  const handleRealmLongPressEnd = () => {
+    clearRealmLongPress();
+  };
+
+  const handleRealmPointerMove = () => {
+    if (dragRef.current.hasMoved) clearRealmLongPress();
+  };
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -116,6 +145,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
     if (Math.abs(dx) > 6) {
       drag.hasMoved = true;
+      clearRealmLongPress();
     }
 
     const now = performance.now();
@@ -126,33 +156,26 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       drag.lastTime = now;
     }
 
-    // Convert pixel dx into pagePosition change
     const barWidth = navContainerRef.current?.clientWidth || 320;
     const stepPx = barWidth / 2.2;
     const deltaPage = dx / stepPx;
     let targetPagePos = drag.startPagePos + deltaPage;
 
-    // Resistance past boundaries
     if (targetPagePos < 0) {
       targetPagePos = targetPagePos * 0.22;
     } else if (targetPagePos > 2) {
       targetPagePos = 2 + (targetPagePos - 2) * 0.22;
     }
 
-    // Direct 1:1 update of master continuous pagePosition
     pagePosition.set(targetPagePos);
 
-    // PHYSICAL NAVBAR CONTAINER DEFORMATION
-    // Translate container in direction of drag
     const physicalXOffset = Math.max(-42, Math.min(42, dx * 0.25));
     navContainerX.set(physicalXOffset);
 
-    // Elastic horizontal stretching and vertical squishing
     const stretchAmount = Math.min(Math.abs(dx) * 0.0015, 0.14);
     navContainerScaleX.set(1 + stretchAmount);
     navContainerScaleY.set(1 - stretchAmount * 0.45);
 
-    // Liquid skew
     const skewAmount = Math.max(-6, Math.min(6, drag.velocity * -3.5));
     navContainerSkewX.set(skewAmount);
   };
@@ -161,12 +184,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     const drag = dragRef.current;
     if (!drag.isDragging) return;
     drag.isDragging = false;
+    clearRealmLongPress();
 
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch (_) {}
 
-    // Spring physical navbar container back to standard shape and position
     navContainerX.set(0);
     navContainerScaleX.set(1);
     navContainerScaleY.set(1);
@@ -199,6 +222,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   };
 
   const handleTabClick = (tab: HomeTab, e: React.MouseEvent) => {
+    if (tab === 'realm' && realmLongPressTriggered.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      realmLongPressTriggered.current = false;
+      return;
+    }
     if (dragRef.current.hasMoved) {
       e.preventDefault();
       e.stopPropagation();
@@ -207,9 +236,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     onSelectTab(tab);
   };
 
+  const openRealmAction = (action: 'add' | 'camera' | 'refresh') => {
+    setShowRealmQuickActions(false);
+    if (action === 'add') onOpenNewChit?.();
+    if (action === 'camera') onOpenCamera?.();
+    if (action === 'refresh') onRefreshPage?.();
+  };
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md px-6 pb-6 pt-2 select-none touch-none pointer-events-auto">
-      {/* Draggable Liquid Black Rounded Navbar Container */}
       <motion.div
         ref={navContainerRef}
         onPointerDown={handlePointerDown}
@@ -224,7 +259,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           skewX: springNavSkewX,
         }}
       >
-        {/* Continuous Liquid Light-Blue Active Dot */}
         <motion.div
           className="absolute bottom-2.5 h-2 w-2 -translate-x-1/2 rounded-full bg-cyan-400 shadow-[0_0_12px_#00d2ff,0_0_20px_rgba(0,210,255,0.6)] pointer-events-none z-20"
           style={{
@@ -235,16 +269,74 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           }}
         />
 
-        {/* 1. REALM TAB (Position 0) */}
         <button
           onClick={(e) => handleTabClick('realm', e)}
+          onPointerDown={handleRealmLongPressStart}
+          onPointerMove={handleRealmPointerMove}
+          onPointerUp={handleRealmLongPressEnd}
+          onPointerCancel={handleRealmLongPressEnd}
           className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
-          aria-label="Realm"
+          aria-label="Realm — long press for quick actions"
         >
           <GlobeIconWithProximity pagePosition={pagePosition} tabIndex={0} />
+
+          {showRealmQuickActions && (
+            <>
+              <button
+                type="button"
+                aria-label="Close Realm quick actions"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRealmQuickActions(false);
+                }}
+                className="fixed inset-0 z-[70] cursor-default bg-black/35"
+              />
+              <div className="absolute bottom-14 left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center gap-2.5 rounded-3xl border border-zinc-800 bg-black/95 p-2.5 shadow-[0_16px_50px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openRealmAction('refresh');
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-zinc-200 transition hover:border-cyan-400 hover:text-cyan-300 active:scale-90"
+                  aria-label="Refresh page"
+                  title="Refresh page"
+                >
+                  <RefreshCw className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openRealmAction('camera');
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-400/70 bg-zinc-950 text-cyan-300 shadow-[0_0_18px_rgba(0,210,255,0.25)] transition hover:bg-cyan-400 hover:text-black active:scale-90"
+                  aria-label="Open camera"
+                  title="Camera"
+                >
+                  <Camera className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openRealmAction('add');
+                  }}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-400 text-black shadow-[0_0_18px_rgba(0,210,255,0.55)] transition hover:bg-cyan-300 active:scale-90"
+                  aria-label="Add Chit"
+                  title="Add"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </div>
+            </>
+          )}
         </button>
 
-        {/* 2. CHATTER TAB (Position 1) */}
         <button
           onClick={(e) => handleTabClick('chatter', e)}
           className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
@@ -253,7 +345,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <ChatterIconWithProximity pagePosition={pagePosition} tabIndex={1} />
         </button>
 
-        {/* 3. PROFILE BOB TAB (Position 2) */}
         <button
           onClick={(e) => handleTabClick('profile', e)}
           className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
@@ -266,15 +357,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   );
 };
 
-// Continuous Proximity Icons (GPU-accelerated dual icon crossfade and scale)
 const GlobeIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos: number) => {
-    return Math.max(0, 1 - Math.abs(pos - tabIndex));
-  });
-
+  const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
   const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
@@ -295,10 +382,7 @@ const ChatterIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos: number) => {
-    return Math.max(0, 1 - Math.abs(pos - tabIndex));
-  });
-
+  const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
   const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
@@ -319,10 +403,7 @@ const ProfileIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos: number) => {
-    return Math.max(0, 1 - Math.abs(pos - tabIndex));
-  });
-
+  const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
   const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
@@ -338,5 +419,3 @@ const ProfileIconWithProximity: React.FC<{
     </motion.div>
   );
 };
-
-
