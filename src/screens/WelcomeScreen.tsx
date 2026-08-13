@@ -1,2 +1,4 @@
 import React from 'react';
-export const WelcomeScreen: React.FC = () => <div>Chitter</div>;
+import { OnboardingScreen } from './OnboardingScreen';
+import { useChitter } from '../context/ChitterContext';
+export const WelcomeScreen: React.FC = () => { const { setScreen } = useChitter(); return <OnboardingScreen onComplete={() => setScreen('login')} />; };
