@@ -1,154 +1,342 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { motion, MotionValue, useTransform, useVelocity, useSpring, animate } from 'motion/react';
-import { Camera, Globe, MessageSquare, Plus, RotateCcw, X, Check } from 'lucide-react';
+import React, { useRef } from 'react';
+import {
+  motion,
+  MotionValue,
+  useTransform,
+  useVelocity,
+  useSpring,
+  animate,
+  useMotionValue,
+} from 'motion/react';
+import { Globe, MessageSquare } from 'lucide-react';
 import { HomeTab } from '../../types';
 import { PacmanAvatar } from './PacmanAvatar';
-import { useChitter } from '../../context/ChitterContext';
 
 interface BottomNavProps {
   pagePosition: MotionValue<number>;
   activeTab: HomeTab;
   onSelectTab: (tab: HomeTab) => void;
-  onBarDragStart?: () => void;
-  onBarDrag?: (deltaX: number) => void;
-  onBarDragEnd?: () => void;
 }
 
-export const BottomNav: React.FC<BottomNavProps> = ({ pagePosition, onSelectTab, onBarDragStart, onBarDrag, onBarDragEnd }) => {
-  const { setNewChitModalOpen } = useChitter();
+export const BottomNav: React.FC<BottomNavProps> = ({
+  pagePosition,
+  onSelectTab,
+}) => {
+  const tabs: HomeTab[] = ['realm', 'chatter', 'profile'];
+  const navContainerRef = useRef<HTMLDivElement>(null);
+
+  // Physical motion values for elastic deformation of the rounded navbar container
+  const navContainerX = useMotionValue(0);
+  const navContainerScaleX = useMotionValue(1);
+  const navContainerScaleY = useMotionValue(1);
+  const navContainerSkewX = useMotionValue(0);
+
+  // Smooth springs for elastic return to standard shape
+  const springNavX = useSpring(navContainerX, { stiffness: 320, damping: 25 });
+  const springNavScaleX = useSpring(navContainerScaleX, { stiffness: 320, damping: 25 });
+  const springNavScaleY = useSpring(navContainerScaleY, { stiffness: 320, damping: 25 });
+  const springNavSkewX = useSpring(navContainerSkewX, { stiffness: 320, damping: 25 });
+
+  // Velocity derived from continuous pagePosition for liquid dot stretch
   const rawVelocity = useVelocity(pagePosition);
-  const velocity = useSpring(rawVelocity, { stiffness: 260, damping: 24 });
-  const [realmActionsOpen, setRealmActionsOpen] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [cameraReady, setCameraReady] = useState(false);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const navRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef({ active: false, startX: 0, moved: false, pointerId: -1 });
-  const longPressRef = useRef(false);
-  const pressTimerRef = useRef<number | null>(null);
+  const velocity = useSpring(rawVelocity, { stiffness: 280, damping: 22 });
 
-  const liquidCenter = useTransform(pagePosition, (pos) => `${16.666 + (pos / 2) * 66.667}%`);
-  const travel = useTransform(pagePosition, (pos) => {
-    const clamped = Math.max(0, Math.min(2, pos));
-    return Math.min(1, Math.abs(clamped - Math.round(clamped)));
-  });
-  const liquidWidth = useTransform(travel, [0, 0.12, 0.5], [42, 58, 96]);
-  const liquidHeight = useTransform(travel, [0, 0.5], [28, 36]);
-  const liquidScaleX = useTransform(velocity, (v) => 1 + Math.min(Math.abs(v) * 0.26, 0.95));
-  const liquidScaleY = useTransform(velocity, (v) => 1 - Math.min(Math.abs(v) * 0.05, 0.12));
-
-  useEffect(() => {
-    if (!cameraOpen || capturedImage) return;
-    let cancelled = false;
-    const startCamera = async () => {
-      setCameraError(null);
-      setCameraReady(false);
-      try {
-        if (!window.isSecureContext) throw new Error('secure');
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('unsupported');
-        streamRef.current?.getTracks().forEach((track) => track.stop());
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode }, audio: false });
-        if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setCameraReady(true);
-        }
-      } catch (error) {
-        const code = error instanceof Error ? error.message : '';
-        if (code === 'secure') setCameraError('Camera needs the secure HTTPS version of Chitter.');
-        else if (code === 'unsupported') setCameraError('This browser does not support camera access.');
-        else setCameraError('Camera permission was denied or the camera is unavailable. Allow camera access for Chitter, then try again.');
-      }
-    };
-    startCamera();
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    };
-  }, [cameraOpen, facingMode, capturedImage]);
-
-  const clearPressTimer = () => { if (pressTimerRef.current !== null) { window.clearTimeout(pressTimerRef.current); pressTimerRef.current = null; } };
-  const handleRealmPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    longPressRef.current = false;
-    clearPressTimer();
-    pressTimerRef.current = window.setTimeout(() => { longPressRef.current = true; navigator.vibrate?.(12); setRealmActionsOpen(true); }, 520);
-  };
-  const handleRealmPointerUp = () => { clearPressTimer(); if (!longPressRef.current) onSelectTab('realm'); longPressRef.current = false; };
-  const handleRealmPointerCancel = () => { clearPressTimer(); longPressRef.current = false; };
-
-  // The whole rounded navbar is a drag handle. The screen owns the gesture math;
-  // this component only reports the physical finger displacement to HomeScreen.
-  const handleNavPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button')) return;
-    dragRef.current = { active: true, startX: e.clientX, moved: false, pointerId: e.pointerId };
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
-    onBarDragStart?.();
-  };
-  const handleNavPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag.active || drag.pointerId !== e.pointerId) return;
-    const dx = e.clientX - drag.startX;
-    if (Math.abs(dx) > 4) drag.moved = true;
-    if (drag.moved) { e.preventDefault(); onBarDrag?.(dx); }
-  };
-  const finishNavDrag = (e?: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag.active) return;
-    drag.active = false;
-    try { if (e) e.currentTarget.releasePointerCapture(drag.pointerId); } catch (_) {}
-    if (drag.moved) onBarDragEnd?.();
-  };
-
-  const closeCamera = () => {
-    setCameraOpen(false); setCapturedImage(null); setCameraReady(false);
-    streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
-  };
-  const capturePhoto = () => {
-    const video = videoRef.current; const canvas = canvasRef.current;
-    if (!video || !canvas || !cameraReady || video.readyState < 2) return;
-    canvas.width = video.videoWidth || 1080; canvas.height = video.videoHeight || 1920;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    if (facingMode === 'user') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    setCapturedImage(canvas.toDataURL('image/jpeg', 0.9));
-    streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
-  };
-
-  if (cameraOpen) return (
-    <div className="fixed inset-0 z-[70] bg-black">
-      {capturedImage ? <img src={capturedImage} alt="Captured" className="h-full w-full object-contain" /> : cameraError ? (
-        <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center text-white">
-          <Camera className="h-12 w-12 text-cyan-400" /><p className="text-sm text-zinc-300">{cameraError}</p>
-          <button onClick={() => { setCameraError(null); setCameraReady(false); setCameraOpen(false); requestAnimationFrame(() => setCameraOpen(true)); }} className="rounded-full bg-cyan-400 px-6 py-3 font-bold text-black">Try again</button>
-          <button onClick={closeCamera} className="rounded-full border border-zinc-700 px-6 py-3">Close</button>
-        </div>
-      ) : <><video ref={videoRef} muted playsInline className={`h-full w-full object-cover ${cameraReady ? 'opacity-100' : 'opacity-0'}`} /><div className="absolute inset-0 flex items-center justify-center text-sm text-zinc-300">Starting camera…</div></>}
-      <canvas ref={canvasRef} className="hidden" />
-      <div className="absolute inset-x-0 top-0 flex items-center justify-between p-5"><button onClick={closeCamera} className="rounded-full bg-black/60 p-3 text-white"><X className="h-6 w-6" /></button>{!capturedImage && <button onClick={() => setFacingMode((m) => m === 'environment' ? 'user' : 'environment')} className="rounded-full bg-black/60 p-3 text-white"><RotateCcw className="h-6 w-6" /></button>}</div>
-      {capturedImage ? <div className="absolute inset-x-0 bottom-8 flex justify-center gap-3"><button onClick={() => setCapturedImage(null)} className="rounded-full bg-black/70 px-6 py-3 font-semibold text-white">Retake</button><button onClick={closeCamera} className="flex items-center gap-2 rounded-full bg-cyan-400 px-6 py-3 font-bold text-black"><Check className="h-5 w-5" />Done</button></div> : <button onClick={capturePhoto} disabled={!cameraReady} className="absolute bottom-8 left-1/2 flex h-20 w-20 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white/90 bg-white/10 disabled:opacity-40"><span className="h-14 w-14 rounded-full bg-white" /></button>}
-    </div>
+  // 1. Continuous Horizontal Position for the Light-Blue Dot across 3 slot centers:
+  // Slot positions: Realm = 16.666%, Chatter = 50.000%, Profile = 83.333%
+  const dotLeftPercent = useTransform(
+    pagePosition,
+    (pos) => `${16.666 + (pos / 2) * 66.667}%`
   );
 
+  // 2. Liquid Dot Stretch Effect along X-axis
+  const dotScaleX = useTransform(velocity, (v) => {
+    const speed = Math.abs(v);
+    return 1 + Math.min(speed * 0.35, 1.5);
+  });
+
+  // 3. Subtle Liquid Squash along Y-axis
+  const dotScaleY = useTransform(velocity, (v) => {
+    const speed = Math.abs(v);
+    return 1 - Math.min(speed * 0.12, 0.28);
+  });
+
+  // 4. Directional transform origin for dot stretch
+  const dotTransformOrigin = useTransform(velocity, (v) => {
+    if (v > 0.05) return '0% 50%';
+    if (v < -0.05) return '100% 50%';
+    return '50% 50%';
+  });
+
+  // Pointer drag state for physical navbar controller
+  const dragRef = useRef<{
+    isDragging: boolean;
+    hasMoved: boolean;
+    startX: number;
+    startPagePos: number;
+    lastX: number;
+    lastTime: number;
+    velocity: number;
+  }>({
+    isDragging: false,
+    hasMoved: false,
+    startX: 0,
+    startPagePos: 0,
+    lastX: 0,
+    lastTime: 0,
+    velocity: 0,
+  });
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    const startX = e.clientX;
+    const startPagePos = pagePosition.get();
+
+    dragRef.current = {
+      isDragging: true,
+      hasMoved: false,
+      startX,
+      startPagePos,
+      lastX: startX,
+      lastTime: performance.now(),
+      velocity: 0,
+    };
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (_) {}
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag.isDragging) return;
+
+    const currentX = e.clientX;
+    const dx = currentX - drag.startX;
+
+    if (Math.abs(dx) > 6) {
+      drag.hasMoved = true;
+    }
+
+    const now = performance.now();
+    const dt = now - drag.lastTime;
+    if (dt > 0) {
+      drag.velocity = (currentX - drag.lastX) / dt;
+      drag.lastX = currentX;
+      drag.lastTime = now;
+    }
+
+    // Convert pixel dx into pagePosition change
+    const barWidth = navContainerRef.current?.clientWidth || 320;
+    const stepPx = barWidth / 2.2;
+    const deltaPage = dx / stepPx;
+    let targetPagePos = drag.startPagePos + deltaPage;
+
+    // Resistance past boundaries
+    if (targetPagePos < 0) {
+      targetPagePos = targetPagePos * 0.22;
+    } else if (targetPagePos > 2) {
+      targetPagePos = 2 + (targetPagePos - 2) * 0.22;
+    }
+
+    // Direct 1:1 update of master continuous pagePosition
+    pagePosition.set(targetPagePos);
+
+    // PHYSICAL NAVBAR CONTAINER DEFORMATION
+    // Translate container in direction of drag
+    const physicalXOffset = Math.max(-42, Math.min(42, dx * 0.25));
+    navContainerX.set(physicalXOffset);
+
+    // Elastic horizontal stretching and vertical squishing
+    const stretchAmount = Math.min(Math.abs(dx) * 0.0015, 0.14);
+    navContainerScaleX.set(1 + stretchAmount);
+    navContainerScaleY.set(1 - stretchAmount * 0.45);
+
+    // Liquid skew
+    const skewAmount = Math.max(-6, Math.min(6, drag.velocity * -3.5));
+    navContainerSkewX.set(skewAmount);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag.isDragging) return;
+    drag.isDragging = false;
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (_) {}
+
+    // Spring physical navbar container back to standard shape and position
+    navContainerX.set(0);
+    navContainerScaleX.set(1);
+    navContainerScaleY.set(1);
+    navContainerSkewX.set(0);
+
+    if (drag.hasMoved) {
+      const currentPos = pagePosition.get();
+      const vel = drag.velocity;
+
+      let targetIndex = Math.round(currentPos);
+      if (vel > 0.35) {
+        targetIndex = Math.min(2, Math.floor(drag.startPagePos) + 1);
+        if (currentPos > 1.2) targetIndex = 2;
+      } else if (vel < -0.35) {
+        targetIndex = Math.max(0, Math.ceil(drag.startPagePos) - 1);
+        if (currentPos < 0.8) targetIndex = 0;
+      } else {
+        targetIndex = Math.min(2, Math.max(0, Math.round(currentPos)));
+      }
+
+      animate(pagePosition, targetIndex, {
+        type: 'spring',
+        stiffness: 340,
+        damping: 30,
+        velocity: vel * 3,
+      });
+
+      onSelectTab(tabs[targetIndex]);
+    }
+  };
+
+  const handleTabClick = (tab: HomeTab, e: React.MouseEvent) => {
+    if (dragRef.current.hasMoved) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onSelectTab(tab);
+  };
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md px-6 pb-6 pt-2 select-none">
-      <div ref={navRef} onPointerDown={handleNavPointerDown} onPointerMove={handleNavPointerMove} onPointerUp={finishNavDrag} onPointerCancel={finishNavDrag} className="relative flex items-center justify-between rounded-full border border-zinc-900 bg-black/95 px-2 py-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl" style={{ touchAction: 'none' }}>
-        <motion.div aria-hidden="true" className="pointer-events-none absolute bottom-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400/15 ring-1 ring-cyan-300/25" style={{ left: liquidCenter, width: liquidWidth, height: liquidHeight, scaleX: liquidScaleX, scaleY: liquidScaleY, transformOrigin: '50% 50%' }} />
-        <motion.div aria-hidden="true" className="pointer-events-none absolute bottom-2.5 h-2 w-2 -translate-x-1/2 rounded-full bg-cyan-300 shadow-[0_0_10px_#00d2ff,0_0_18px_rgba(0,210,255,0.65)] z-20" style={{ left: liquidCenter, scaleX: liquidScaleX }} />
-        <button onPointerDown={handleRealmPointerDown} onPointerUp={handleRealmPointerUp} onPointerCancel={handleRealmPointerCancel} onPointerLeave={handleRealmPointerCancel} className="relative z-30 flex flex-1 items-center justify-center py-1 active:scale-95" aria-label="Realm"><motion.span style={{ scale: useTransform(pagePosition, (pos) => 1 + Math.max(0, 1 - Math.abs(pos)) * 0.18) }}><Globe className="h-6 w-6 text-zinc-300" /></motion.span></button>
-        <button onClick={() => onSelectTab('chatter')} className="relative z-30 flex flex-1 items-center justify-center py-1 active:scale-95" aria-label="Chatter"><motion.span style={{ scale: useTransform(pagePosition, (pos) => 1 + Math.max(0, 1 - Math.abs(pos - 1)) * 0.18) }}><MessageSquare className="h-6 w-6 text-zinc-300" /></motion.span></button>
-        <button onClick={() => onSelectTab('profile')} className="relative z-30 flex flex-1 items-center justify-center py-1 active:scale-95" aria-label="Profile Bob"><motion.span style={{ scale: useTransform(pagePosition, (pos) => 1 + Math.max(0, 1 - Math.abs(pos - 2)) * 0.18) }}><PacmanAvatar size={26} isIconOnly active={false} /></motion.span></button>
-        {realmActionsOpen && <><button aria-label="Close Realm actions" className="fixed inset-0 z-20" onClick={() => setRealmActionsOpen(false)} /><div className="absolute bottom-[calc(100%+14px)] left-[16.666%] z-50 flex -translate-x-1/2 flex-col items-center gap-3"><button onClick={() => { setRealmActionsOpen(false); setCameraOpen(true); }} className="flex h-12 w-12 items-center justify-center rounded-full border border-cyan-300/30 bg-black text-cyan-300 shadow-lg"><Camera className="h-5 w-5" /></button><button onClick={() => { setRealmActionsOpen(false); setNewChitModalOpen(true); }} className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-400 text-black shadow-lg"><Plus className="h-6 w-6" /></button></div></>}
-      </div>
+    <nav className="fixed bottom-0 left-0 right-0 z-40 mx-auto max-w-md px-6 pb-6 pt-2 select-none touch-none pointer-events-auto">
+      {/* Draggable Liquid Black Rounded Navbar Container */}
+      <motion.div
+        ref={navContainerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="relative flex items-center justify-between rounded-full border border-zinc-900 bg-black px-2 py-3.5 shadow-[0_12px_36px_rgba(0,0,0,0.95)] backdrop-blur-xl touch-none cursor-grab active:cursor-grabbing will-change-transform"
+        style={{
+          x: springNavX,
+          scaleX: springNavScaleX,
+          scaleY: springNavScaleY,
+          skewX: springNavSkewX,
+        }}
+      >
+        {/* Continuous Liquid Light-Blue Active Dot */}
+        <motion.div
+          className="absolute bottom-2.5 h-2 w-2 -translate-x-1/2 rounded-full bg-cyan-400 shadow-[0_0_12px_#00d2ff,0_0_20px_rgba(0,210,255,0.6)] pointer-events-none z-20"
+          style={{
+            left: dotLeftPercent,
+            scaleX: dotScaleX,
+            scaleY: dotScaleY,
+            transformOrigin: dotTransformOrigin,
+          }}
+        />
+
+        {/* 1. REALM TAB (Position 0) */}
+        <button
+          onClick={(e) => handleTabClick('realm', e)}
+          className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
+          aria-label="Realm"
+        >
+          <GlobeIconWithProximity pagePosition={pagePosition} tabIndex={0} />
+        </button>
+
+        {/* 2. CHATTER TAB (Position 1) */}
+        <button
+          onClick={(e) => handleTabClick('chatter', e)}
+          className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
+          aria-label="Chatter"
+        >
+          <ChatterIconWithProximity pagePosition={pagePosition} tabIndex={1} />
+        </button>
+
+        {/* 3. PROFILE BOB TAB (Position 2) */}
+        <button
+          onClick={(e) => handleTabClick('profile', e)}
+          className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
+          aria-label="Profile Bob"
+        >
+          <ProfileIconWithProximity pagePosition={pagePosition} tabIndex={2} />
+        </button>
+      </motion.div>
     </nav>
   );
 };
+
+// Continuous Proximity Icons (GPU-accelerated dual icon crossfade and scale)
+const GlobeIconWithProximity: React.FC<{
+  pagePosition: MotionValue<number>;
+  tabIndex: number;
+}> = ({ pagePosition, tabIndex }) => {
+  const proximity = useTransform(pagePosition, (pos) => {
+    return Math.max(0, 1 - Math.abs(pos - tabIndex));
+  });
+
+  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+
+  return (
+    <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
+        <Globe className="h-6 w-6 text-zinc-500" />
+      </motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute">
+        <Globe className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" />
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const ChatterIconWithProximity: React.FC<{
+  pagePosition: MotionValue<number>;
+  tabIndex: number;
+}> = ({ pagePosition, tabIndex }) => {
+  const proximity = useTransform(pagePosition, (pos) => {
+    return Math.max(0, 1 - Math.abs(pos - tabIndex));
+  });
+
+  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+
+  return (
+    <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
+        <MessageSquare className="h-6 w-6 text-zinc-500" />
+      </motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute">
+        <MessageSquare className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" />
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const ProfileIconWithProximity: React.FC<{
+  pagePosition: MotionValue<number>;
+  tabIndex: number;
+}> = ({ pagePosition, tabIndex }) => {
+  const proximity = useTransform(pagePosition, (pos) => {
+    return Math.max(0, 1 - Math.abs(pos - tabIndex));
+  });
+
+  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+
+  return (
+    <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
+        <PacmanAvatar size={26} isIconOnly={true} active={false} />
+      </motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute">
+        <PacmanAvatar size={26} isIconOnly={true} active={true} />
+      </motion.div>
+    </motion.div>
+  );
+};
+
+
