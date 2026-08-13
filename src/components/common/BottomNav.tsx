@@ -45,7 +45,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   // Slot positions: Realm = 16.666%, Chatter = 50.000%, Profile = 83.333%
   const dotLeftPercent = useTransform(
     pagePosition,
-    (pos) => `${16.666 + (pos / 2) * 66.667}%`
+    (pos: number) => `${16.666 + (pos / 2) * 66.667}%`
   );
 
   // 2. Liquid Dot Stretch Effect along X-axis
@@ -271,13 +271,13 @@ const GlobeIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos) => {
+  const proximity = useTransform(pagePosition, (pos: number) => {
     return Math.max(0, 1 - Math.abs(pos - tabIndex));
   });
 
-  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
-  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
-  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+  const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
@@ -295,13 +295,13 @@ const ChatterIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos) => {
+  const proximity = useTransform(pagePosition, (pos: number) => {
     return Math.max(0, 1 - Math.abs(pos - tabIndex));
   });
 
-  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
-  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
-  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+  const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
@@ -319,13 +319,13 @@ const ProfileIconWithProximity: React.FC<{
   pagePosition: MotionValue<number>;
   tabIndex: number;
 }> = ({ pagePosition, tabIndex }) => {
-  const proximity = useTransform(pagePosition, (pos) => {
+  const proximity = useTransform(pagePosition, (pos: number) => {
     return Math.max(0, 1 - Math.abs(pos - tabIndex));
   });
 
-  const scale = useTransform(proximity, (p) => 1 + p * 0.15);
-  const activeOpacity = useTransform(proximity, (p) => Math.pow(p, 1.5));
-  const inactiveOpacity = useTransform(proximity, (p) => 1 - Math.pow(p, 1.5));
+  const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
+  const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
+  const inactiveOpacity = useTransform(proximity, (p: number) => 1 - Math.pow(p, 1.5));
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">

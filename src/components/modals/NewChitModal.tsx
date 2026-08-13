@@ -1,23 +1,37 @@
-import React, { useState } from 'react';
-import { X, Image, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Image as ImageIcon, Sparkles, Trash2 } from 'lucide-react';
 import { useChitter } from '../../context/ChitterContext';
 
-export const NewChitModal: React.FC = () => {
+interface NewChitModalProps {
+  initialImageUrl?: string;
+}
+
+export const NewChitModal: React.FC<NewChitModalProps> = ({ initialImageUrl }) => {
   const { isNewChitModalOpen, setNewChitModalOpen, addRealmPost } = useChitter();
   const [content, setContent] = useState('');
-  const [tags, setTags] = useState('#Chitter #Vibes');
+  const [tags, setTags] = useState('#Chitter #Realm');
   const [imageUrl, setImageUrl] = useState('');
+
+  useEffect(() => {
+    if (initialImageUrl) {
+      setImageUrl(initialImageUrl);
+    }
+  }, [initialImageUrl, isNewChitModalOpen]);
 
   if (!isNewChitModalOpen) return null;
 
   const handlePost = () => {
-    if (!content.trim()) return;
+    if (!content.trim() && !imageUrl) return;
     const hashtagList = tags
       .split(' ')
       .map((t) => t.trim())
       .filter((t) => t.startsWith('#'));
 
-    addRealmPost(content, hashtagList, imageUrl.trim() || undefined);
+    addRealmPost(
+      content.trim() || 'Shared a moment in Chitter Realm ✨',
+      hashtagList,
+      imageUrl.trim() || undefined
+    );
     setContent('');
     setImageUrl('');
     setNewChitModalOpen(false);
@@ -41,12 +55,26 @@ export const NewChitModal: React.FC = () => {
 
         <div className="my-4 space-y-4">
           <textarea
-            rows={4}
+            rows={3}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="What is happening in your realm?"
             className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4 text-sm text-white placeholder-zinc-500 focus:border-cyan-400 focus:outline-none resize-none"
           />
+
+          {/* Attached Image Preview */}
+          {imageUrl && (
+            <div className="relative rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-900 max-h-48 flex items-center justify-center">
+              <img src={imageUrl} alt="Attachment" className="max-h-48 w-full object-cover" />
+              <button
+                onClick={() => setImageUrl('')}
+                className="absolute top-2 right-2 rounded-full bg-black/80 p-1.5 text-rose-400 hover:text-rose-300"
+                title="Remove photo"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-zinc-400 mb-1">Hashtags</label>
@@ -54,35 +82,37 @@ export const NewChitModal: React.FC = () => {
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="#GenV #Basketball"
-              className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-cyan-400 focus:border-cyan-400 focus:outline-none"
+              placeholder="#Chitter #Vibes"
+              className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs text-cyan-400 focus:border-cyan-400 focus:outline-none"
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-zinc-400 mb-1">Optional Media Image URL</label>
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://images.unsplash.com/..."
-                className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-xs text-white focus:border-cyan-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setImageUrl(
-                    'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=800&auto=format&fit=crop'
-                  )
-                }
-                className="shrink-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-3 text-zinc-400 hover:text-white"
-                title="Use Sample Image"
-              >
-                <Image className="h-4 w-4" />
-              </button>
+          {!imageUrl && (
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1">Attach Image URL</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs text-white focus:border-cyan-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setImageUrl(
+                      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=800&auto=format&fit=crop'
+                    )
+                  }
+                  className="shrink-0 rounded-2xl border border-zinc-800 bg-zinc-900 p-2.5 text-zinc-400 hover:text-white"
+                  title="Sample Image"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="flex justify-end space-x-3 pt-2">
@@ -94,8 +124,8 @@ export const NewChitModal: React.FC = () => {
           </button>
           <button
             onClick={handlePost}
-            disabled={!content.trim()}
-            className="rounded-full bg-cyan-400 px-6 py-2.5 text-sm font-bold text-black disabled:opacity-50 hover:bg-cyan-300"
+            disabled={!content.trim() && !imageUrl}
+            className="rounded-full bg-cyan-400 px-6 py-2.5 text-sm font-bold text-black disabled:opacity-50 hover:bg-cyan-300 shadow-[0_0_12px_#00d2ff]"
           >
             Post Chit
           </button>
@@ -104,3 +134,4 @@ export const NewChitModal: React.FC = () => {
     </div>
   );
 };
+

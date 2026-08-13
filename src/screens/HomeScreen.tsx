@@ -3,14 +3,16 @@ import { motion, useMotionValue, useTransform, animate } from 'motion/react';
 import { useChitter } from '../context/ChitterContext';
 import { Header } from '../components/common/Header';
 import { BottomNav } from '../components/common/BottomNav';
-import { ChatListItem } from '../components/chatter/ChatListItem';
 import { ChatThreadView } from '../components/chatter/ChatThreadView';
-import { RealmPostCard } from '../components/realm/RealmPostCard';
+import { RealmView } from '../components/realm/RealmView';
+import { ChatterView } from '../components/chatter/ChatterView';
 import { ProfileBobView } from '../components/profile/ProfileBobView';
 import { SearchModal } from '../components/modals/SearchModal';
 import { EditProfileModal } from '../components/modals/EditProfileModal';
 import { NewChitModal } from '../components/modals/NewChitModal';
 import { SettingsDrawer } from '../components/modals/SettingsDrawer';
+import { CameraModal } from '../components/common/CameraModal';
+import { OnboardingScreen } from './OnboardingScreen';
 import { HomeTab } from '../types';
 
 export const HomeScreen: React.FC = () => {
@@ -19,15 +21,24 @@ export const HomeScreen: React.FC = () => {
     setActiveTab,
     chatItems,
     activeChatId,
-    openChat,
     closeChat,
-    realmPosts,
     setSearchOpen,
     setNewChitModalOpen,
     setEditProfileModalOpen,
   } = useChitter();
 
   const [isSettingsOpen, setSettingsOpen] = useState(false);
+  const [isCameraOpen, setCameraOpen] = useState(false);
+  const [capturedPhotoUrl, setCapturedPhotoUrl] = useState<string | undefined>(undefined);
+
+  // Check onboarding state from localStorage
+  const [isOnboarding, setIsOnboarding] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('chitter_onboarding_completed') !== 'true';
+    } catch (_) {
+      return true;
+    }
+  });
 
   // Active Chat thread view takes over screen when selected
   const activeChat = chatItems.find((c) => c.id === activeChatId);
@@ -58,7 +69,7 @@ export const HomeScreen: React.FC = () => {
     startPos: currentIndex,
     axis: 'undetermined',
     lastX: 0,
-    lastTime: 0,
+    lastTime: performance.now(),
     velocity: 0,
     isPointerDown: false,
   });
@@ -125,7 +136,7 @@ export const HomeScreen: React.FC = () => {
       gesture.lastTime = now;
     }
 
-    // 1. Direction Locking: Determine whether gesture is Horizontal or Vertical
+    // Direction Locking: Determine whether gesture is Horizontal or Vertical
     if (gesture.axis === 'undetermined') {
       const absDx = Math.abs(dx);
       const absDy = Math.abs(dy);
@@ -141,7 +152,7 @@ export const HomeScreen: React.FC = () => {
       }
     }
 
-    // 2. If locked to horizontal, update pagePosition continuously across all 3 panels
+    // Update pagePosition continuously across all 3 panels if horizontal
     if (gesture.axis === 'horizontal') {
       const width = containerRef.current?.clientWidth || window.innerWidth || 360;
       const deltaPage = -dx / width;
@@ -156,9 +167,6 @@ export const HomeScreen: React.FC = () => {
 
       pagePosition.set(targetPos);
     }
-
-    // 3. If locked to vertical, DO NOTHING to pagePosition.
-    // Native browser scrolling inside child panel div handles vertical scrolling.
   };
 
   const handlePointerUp = (e?: React.PointerEvent) => {
@@ -178,21 +186,16 @@ export const HomeScreen: React.FC = () => {
 
       let targetIndex = Math.round(currentPos);
 
-      // Fast swipe gesture detection
       if (vel < -0.35) {
-        // Fast swipe left -> advance right
         targetIndex = Math.min(2, Math.floor(gesture.startPos) + 1);
         if (currentPos > 1.2) targetIndex = 2;
       } else if (vel > 0.35) {
-        // Fast swipe right -> advance left
         targetIndex = Math.max(0, Math.ceil(gesture.startPos) - 1);
         if (currentPos < 0.8) targetIndex = 0;
       } else {
-        // Slow drag -> snap to nearest section
         targetIndex = Math.min(2, Math.max(0, Math.round(currentPos)));
       }
 
-      // Spring physics to settle into target position
       animate(pagePosition, targetIndex, {
         type: 'spring',
         stiffness: 340,
@@ -209,10 +212,27 @@ export const HomeScreen: React.FC = () => {
     gesture.axis = 'undetermined';
   };
 
-  // Convert pagePosition float to container translateX percentage (-0% to -200% of single panel width)
-  // Since 3 panels wrapper has width = 300%, -pagePosition * (100% / 3) = -pagePosition * 33.333%
+  // Convert pagePosition float to container translateX percentage
   const containerX = useTransform(pagePosition, (pos) => `-${(pos / 3) * 100}%`);
 
+  // Handle Photo captured from CameraModal -> opens NewChitModal with pre-populated image
+  const handleCapturePhoto = (photoUrl: string) => {
+    setCapturedPhotoUrl(photoUrl);
+    setNewChitModalOpen(true);
+  };
+
+  // If Onboarding is active, display the Onboarding Screen first
+  if (isOnboarding) {
+    return (
+      <OnboardingScreen
+        onComplete={() => {
+          setIsOnboarding(false);
+        }}
+      />
+    );
+  }
+
+  // Active Chat thread view takes over screen when selected
   if (activeChat) {
     return (
       <div className="h-full w-full bg-zinc-950">
@@ -246,29 +266,21 @@ export const HomeScreen: React.FC = () => {
         >
           {/* PANEL 0: REALM */}
           <div
-            className="h-full w-1/3 overflow-y-auto px-4 pt-3 pb-28 space-y-4"
+            className="h-full w-1/3 overflow-y-auto"
             style={{ touchAction: 'pan-y' }}
           >
-            {realmPosts.map((post) => (
-              <RealmPostCard key={post.id} post={post} />
-            ))}
+            <RealmView
+              onOpenNewChit={() => setNewChitModalOpen(true)}
+              onOpenCamera={() => setCameraOpen(true)}
+            />
           </div>
 
           {/* PANEL 1: CHATTER */}
           <div
-            className="h-full w-1/3 overflow-y-auto pb-28"
+            className="h-full w-1/3 overflow-y-auto"
             style={{ touchAction: 'pan-y' }}
           >
-            <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-              Recent Conversations ({chatItems.length})
-            </div>
-            {chatItems.map((chat) => (
-              <ChatListItem
-                key={chat.id}
-                chat={chat}
-                onClick={() => openChat(chat.id)}
-              />
-            ))}
+            <ChatterView onOpenCamera={() => setCameraOpen(true)} />
           </div>
 
           {/* PANEL 2: PROFILE BOB */}
@@ -291,11 +303,22 @@ export const HomeScreen: React.FC = () => {
         onSelectTab={handleSelectTab}
       />
 
+      {/* Camera & Editor Overlay */}
+      <CameraModal
+        isOpen={isCameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapturePhoto={handleCapturePhoto}
+      />
+
       {/* Modals & Drawers */}
       <SearchModal />
       <EditProfileModal />
-      <NewChitModal />
-      <SettingsDrawer isOpen={isSettingsOpen} onClose={() => setSettingsOpen(false)} />
+      <NewChitModal initialImageUrl={capturedPhotoUrl} />
+      <SettingsDrawer
+        isOpen={isSettingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onReplayOnboarding={() => setIsOnboarding(true)}
+      />
     </div>
   );
 };

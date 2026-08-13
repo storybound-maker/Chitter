@@ -1,13 +1,18 @@
 import React from 'react';
-import { X, Shield, Bell, LogOut } from 'lucide-react';
+import { X, Shield, Bell, LogOut, RefreshCw } from 'lucide-react';
 import { useChitter } from '../../context/ChitterContext';
 
 interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onReplayOnboarding?: () => void;
 }
 
-export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ isOpen, onClose }) => {
+export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
+  isOpen,
+  onClose,
+  onReplayOnboarding,
+}) => {
   const { logout, userProfile } = useChitter();
 
   if (!isOpen) return null;
@@ -34,6 +39,19 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ isOpen, onClose 
               <Bell className="h-4 w-4 text-cyan-400" />
               <span>Push Notifications</span>
             </button>
+
+            {onReplayOnboarding && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onReplayOnboarding();
+                }}
+                className="flex w-full items-center space-x-3 rounded-2xl bg-cyan-950/40 border border-cyan-400/30 p-3 text-left text-sm text-cyan-300 hover:bg-cyan-900/40"
+              >
+                <RefreshCw className="h-4 w-4 text-cyan-400" />
+                <span>Replay Onboarding</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -57,3 +75,4 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({ isOpen, onClose 
     </div>
   );
 };
+
