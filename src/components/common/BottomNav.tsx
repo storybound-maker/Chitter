@@ -8,7 +8,7 @@ import {
   animate,
   useMotionValue,
 } from 'motion/react';
-import { Globe, MessageSquare, Plus, Camera, RefreshCw, X } from 'lucide-react';
+import { Globe, MessageSquare, Plus, Camera, RefreshCw } from 'lucide-react';
 import { HomeTab } from '../../types';
 import { PacmanAvatar } from './PacmanAvatar';
 
@@ -34,7 +34,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const realmLongPressTriggered = useRef(false);
   const [showRealmQuickActions, setShowRealmQuickActions] = useState(false);
 
-  // Physical motion values for elastic deformation of the rounded navbar container
+  // Existing liquid navbar physics — intentionally preserved.
   const navContainerX = useMotionValue(0);
   const navContainerScaleX = useMotionValue(1);
   const navContainerScaleY = useMotionValue(1);
@@ -107,13 +107,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     }, 500);
   };
 
-  const handleRealmLongPressEnd = () => {
-    clearRealmLongPress();
-  };
-
-  const handleRealmPointerMove = () => {
-    if (dragRef.current.hasMoved) clearRealmLongPress();
-  };
+  const handleRealmLongPressEnd = () => clearRealmLongPress();
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
@@ -161,11 +155,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     const deltaPage = dx / stepPx;
     let targetPagePos = drag.startPagePos + deltaPage;
 
-    if (targetPagePos < 0) {
-      targetPagePos = targetPagePos * 0.22;
-    } else if (targetPagePos > 2) {
-      targetPagePos = 2 + (targetPagePos - 2) * 0.22;
-    }
+    if (targetPagePos < 0) targetPagePos *= 0.22;
+    else if (targetPagePos > 2) targetPagePos = 2 + (targetPagePos - 2) * 0.22;
 
     pagePosition.set(targetPagePos);
 
@@ -198,8 +189,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     if (drag.hasMoved) {
       const currentPos = pagePosition.get();
       const vel = drag.velocity;
-
       let targetIndex = Math.round(currentPos);
+
       if (vel > 0.35) {
         targetIndex = Math.min(2, Math.floor(drag.startPagePos) + 1);
         if (currentPos > 1.2) targetIndex = 2;
@@ -272,69 +263,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         <button
           onClick={(e) => handleTabClick('realm', e)}
           onPointerDown={handleRealmLongPressStart}
-          onPointerMove={handleRealmPointerMove}
           onPointerUp={handleRealmLongPressEnd}
           onPointerCancel={handleRealmLongPressEnd}
           className="relative z-10 flex flex-1 items-center justify-center py-1 transition active:scale-95"
           aria-label="Realm — long press for quick actions"
         >
           <GlobeIconWithProximity pagePosition={pagePosition} tabIndex={0} />
-
-          {showRealmQuickActions && (
-            <>
-              <button
-                type="button"
-                aria-label="Close Realm quick actions"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowRealmQuickActions(false);
-                }}
-                className="fixed inset-0 z-[70] cursor-default bg-black/35"
-              />
-              <div className="absolute bottom-14 left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center gap-2.5 rounded-3xl border border-zinc-800 bg-black/95 p-2.5 shadow-[0_16px_50px_rgba(0,0,0,0.75)] backdrop-blur-xl">
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openRealmAction('refresh');
-                  }}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-zinc-200 transition hover:border-cyan-400 hover:text-cyan-300 active:scale-90"
-                  aria-label="Refresh page"
-                  title="Refresh page"
-                >
-                  <RefreshCw className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openRealmAction('camera');
-                  }}
-                  className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-400/70 bg-zinc-950 text-cyan-300 shadow-[0_0_18px_rgba(0,210,255,0.25)] transition hover:bg-cyan-400 hover:text-black active:scale-90"
-                  aria-label="Open camera"
-                  title="Camera"
-                >
-                  <Camera className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openRealmAction('add');
-                  }}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-400 text-black shadow-[0_0_18px_rgba(0,210,255,0.55)] transition hover:bg-cyan-300 active:scale-90"
-                  aria-label="Add Chit"
-                  title="Add"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-              </div>
-            </>
-          )}
         </button>
 
         <button
@@ -352,15 +286,54 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         >
           <ProfileIconWithProximity pagePosition={pagePosition} tabIndex={2} />
         </button>
+
+        {showRealmQuickActions && (
+          <>
+            <div
+              className="fixed inset-0 z-[70] bg-black/35"
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setShowRealmQuickActions(false);
+              }}
+              aria-hidden="true"
+            />
+            <div className="fixed bottom-24 left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center gap-2.5 rounded-3xl border border-zinc-800 bg-black/95 p-2.5 shadow-[0_16px_50px_rgba(0,0,0,0.75)] backdrop-blur-xl">
+              <button
+                type="button"
+                onClick={() => openRealmAction('refresh')}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-zinc-200 transition hover:border-cyan-400 hover:text-cyan-300 active:scale-90"
+                aria-label="Refresh page"
+                title="Refresh page"
+              >
+                <RefreshCw className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => openRealmAction('camera')}
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-400/70 bg-zinc-950 text-cyan-300 shadow-[0_0_18px_rgba(0,210,255,0.25)] transition hover:bg-cyan-400 hover:text-black active:scale-90"
+                aria-label="Open camera"
+                title="Camera"
+              >
+                <Camera className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => openRealmAction('add')}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-400 text-black shadow-[0_0_18px_rgba(0,210,255,0.55)] transition hover:bg-cyan-300 active:scale-90"
+                aria-label="Add Chit"
+                title="Add"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+          </>
+        )}
       </motion.div>
     </nav>
   );
 };
 
-const GlobeIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
-}> = ({ pagePosition, tabIndex }) => {
+const GlobeIconWithProximity: React.FC<{ pagePosition: MotionValue<number>; tabIndex: number }> = ({ pagePosition, tabIndex }) => {
   const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
@@ -368,20 +341,13 @@ const GlobeIconWithProximity: React.FC<{
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
-      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
-        <Globe className="h-6 w-6 text-zinc-500" />
-      </motion.div>
-      <motion.div style={{ opacity: activeOpacity }} className="absolute">
-        <Globe className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" />
-      </motion.div>
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute"><Globe className="h-6 w-6 text-zinc-500" /></motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute"><Globe className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" /></motion.div>
     </motion.div>
   );
 };
 
-const ChatterIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
-}> = ({ pagePosition, tabIndex }) => {
+const ChatterIconWithProximity: React.FC<{ pagePosition: MotionValue<number>; tabIndex: number }> = ({ pagePosition, tabIndex }) => {
   const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
@@ -389,20 +355,13 @@ const ChatterIconWithProximity: React.FC<{
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
-      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
-        <MessageSquare className="h-6 w-6 text-zinc-500" />
-      </motion.div>
-      <motion.div style={{ opacity: activeOpacity }} className="absolute">
-        <MessageSquare className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" />
-      </motion.div>
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute"><MessageSquare className="h-6 w-6 text-zinc-500" /></motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute"><MessageSquare className="h-6 w-6 text-cyan-300 drop-shadow-[0_0_12px_rgba(0,210,255,0.9)]" /></motion.div>
     </motion.div>
   );
 };
 
-const ProfileIconWithProximity: React.FC<{
-  pagePosition: MotionValue<number>;
-  tabIndex: number;
-}> = ({ pagePosition, tabIndex }) => {
+const ProfileIconWithProximity: React.FC<{ pagePosition: MotionValue<number>; tabIndex: number }> = ({ pagePosition, tabIndex }) => {
   const proximity = useTransform(pagePosition, (pos: number) => Math.max(0, 1 - Math.abs(pos - tabIndex)));
   const scale = useTransform(proximity, (p: number) => 1 + p * 0.15);
   const activeOpacity = useTransform(proximity, (p: number) => Math.pow(p, 1.5));
@@ -410,12 +369,8 @@ const ProfileIconWithProximity: React.FC<{
 
   return (
     <motion.div style={{ scale }} className="relative flex items-center justify-center h-7 w-7">
-      <motion.div style={{ opacity: inactiveOpacity }} className="absolute">
-        <PacmanAvatar size={26} isIconOnly={true} active={false} />
-      </motion.div>
-      <motion.div style={{ opacity: activeOpacity }} className="absolute">
-        <PacmanAvatar size={26} isIconOnly={true} active={true} />
-      </motion.div>
+      <motion.div style={{ opacity: inactiveOpacity }} className="absolute"><PacmanAvatar size={26} isIconOnly={true} active={false} /></motion.div>
+      <motion.div style={{ opacity: activeOpacity }} className="absolute"><PacmanAvatar size={26} isIconOnly={true} active={true} /></motion.div>
     </motion.div>
   );
 };
